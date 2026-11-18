@@ -1,0 +1,12 @@
+{
+  "name": "finanzas-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal finance and healthy-eating single-page app (CLP, Chile)",
+  "scripts": {
+    "test": "node --test tests/",
+    "serve": "node scripts/serve.mjs",
+    "start": "node scripts/serve.mjs --open"
+  }
+}
