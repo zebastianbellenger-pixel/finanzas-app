@@ -6,7 +6,7 @@ A personal single-page web app (phone and desktop) for a Chilean salary: reads B
 
 ES modules need an HTTP server (opening `index.html` with `file://` will not work). Requires Node.js 20+, no dependencies.
 
-- **Windows**: double-click `iniciar.cmd`. It starts the server and opens the browser; close the window to stop it.
+- **Windows**: double-click `iniciar.cmd`. It starts the server and opens the browser; close the window to stop it. To get a **Mis Finanzas** shortcut on the Desktop, double-click `crear-acceso-directo.cmd` once per computer (it runs `scripts/create-shortcut.ps1`; the shortcut starts minimized).
 - **Any OS**:
 
 ```bash
@@ -73,6 +73,8 @@ Any static host works (GitHub Pages, Netlify, Cloudflare Pages). The code contai
 
 ```
 iniciar.cmd       Windows launcher (double-click)
+crear-acceso-directo.cmd  creates the Desktop shortcut
+scripts/create-shortcut.ps1  shortcut creation script
 scripts/serve.mjs local static server
 index.html        app shell
 css/styles.css    styles (light/dark tokens)
