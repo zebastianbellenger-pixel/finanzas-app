@@ -1,6 +1,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchBankMovements } from '../js/gmail.js';
+import { fetchBankMovements, fetchCartolaFiles } from '../js/gmail.js';
+
+test('downloads cartola PDF attachments, skipping emails already processed', async () => {
+  const calls = [];
+  const pdf = Buffer.from('%PDF-1.4 fake');
+  const fetchImpl = async (url) => {
+    calls.push(String(url));
+    const u = new URL(url);
+    const json = (body) => ({ ok: true, status: 200, json: async () => body });
+    if (u.pathname.endsWith('/messages')) return json({ messages: [{ id: 'm1' }, { id: 'old' }] });
+    if (u.pathname.includes('/attachments/')) return json({ data: pdf.toString('base64url') });
+    return json({
+      id: 'm1', internalDate: String(Date.parse('2026-11-06T00:00:00Z')),
+      payload: { mimeType: 'multipart/mixed', parts: [
+        { mimeType: 'text/html', body: { data: Buffer.from('<p>Cartola</p>').toString('base64url') } },
+        { mimeType: 'application/octet-stream', filename: 'CartolaCtaVistaMensual.pdf', body: { attachmentId: 'att1' } },
+      ] },
+    });
+  };
+  const files = await fetchCartolaFiles('tok', '2026-10-01', { fetchImpl, skip: new Set(['gmail:old']) });
+  assert.equal(files.length, 1);
+  assert.equal(files[0].ref, 'gmail:m1');
+  assert.equal(files[0].filename, 'CartolaCtaVistaMensual.pdf');
+  assert.deepEqual(Buffer.from(files[0].bytes), pdf);
+  assert.ok(calls[0].includes('subject%3Acartola') && calls[0].includes('has%3Aattachment'));
+  assert.ok(!calls.some((c) => c.includes('/messages/old')));
+});
 
 const b64 = (s) => Buffer.from(s, 'utf8').toString('base64url');
 const purchase = (amount, date) => `compra por $${amount} con cargo a Cuenta ****1234 en COMERCIO EJEMPLO el ${date} 10:00.`;

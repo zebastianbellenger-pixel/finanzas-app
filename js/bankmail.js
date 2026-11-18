@@ -180,11 +180,16 @@ export function planImport(movements, state) {
   });
 }
 
-/** Decodes Gmail's base64url body data using the part's charset. */
-export function decodeBase64Url(data, charset = 'utf-8') {
+/** Gmail's base64url data (bodies and attachments) as bytes. */
+export function base64UrlToBytes(data) {
   const b64 = String(data ?? '').replace(/-/g, '+').replace(/_/g, '/');
   const bin = atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
-  const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+/** Decodes Gmail's base64url body data using the part's charset. */
+export function decodeBase64Url(data, charset = 'utf-8') {
+  const bytes = base64UrlToBytes(data);
   try {
     return new TextDecoder(charset).decode(bytes);
   } catch {

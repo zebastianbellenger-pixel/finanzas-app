@@ -14,9 +14,14 @@ import {
 } from './food.js';
 import { loadSyncConfig, saveSyncConfig, syncNow } from './sync.js';
 import {
-  loadGmailConfig, saveGmailConfig, preloadGis, requestGmailToken, revokeGmailToken, fetchBankMovements, CLIENT_ID_PATTERN,
+  loadGmailConfig, saveGmailConfig, preloadGis, requestGmailToken, revokeGmailToken, fetchBankMovements, fetchCartolaFiles,
+  CLIENT_ID_PATTERN,
 } from './gmail.js';
 import { planImport } from './bankmail.js';
+import { parseCartola } from './cartola.js';
+import {
+  cartolaRecords, emailRecords, monthlyReport, monthsAvailable, LEDGER_GROUPS,
+} from './ledger.js';
 import { esc, barChart, lineChart, hbars } from './charts.js';
 
 // ---------- constants & helpers ----------
@@ -78,6 +83,8 @@ const ui = {
   syncText: '',
   syncError: false,
   gmail: { rows: null, loading: '', from: null },
+  // password: cartola PDF password, kept in memory for this session only (never stored or synced).
+  month: { selected: null, loading: '', password: '' },
 };
 
 function touch(rec) {
@@ -178,7 +185,7 @@ function updateSyncPill() {
 // ---------- views ----------
 
 function render() {
-  const views = { home: viewHome, expenses: viewExpenses, accounts: viewAccounts, payslip: viewPayslip, food: viewFood, more: viewMore };
+  const views = { home: viewHome, expenses: viewExpenses, month: viewMonth, accounts: viewAccounts, payslip: viewPayslip, food: viewFood, more: viewMore };
   if (!views[ui.tab]) ui.tab = 'home';
   document.body.dataset.tab = ui.tab;
   document.getElementById('view').innerHTML = views[ui.tab]();
@@ -448,6 +455,118 @@ function gmailCard(cycleStart) {
       <button class="btn-small btn-primary" type="submit"${g.loading ? ' disabled' : ''}>Buscar cobros</button></div>
     <p class="small muted" id="gmail-status" aria-live="polite">${esc(g.loading || 'Banco de Chile y BancoEstado. Te pedirá permiso de lectura de Gmail (dura 1 hora).')}</p>
     <button type="button" class="btn-link small" data-action="gmail-forget">Desconectar Gmail de este equipo</button>
+  </form>`;
+}
+
+// ---------- monthly ledger ----------
+
+const MONTH_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const groupLabel = (id) => LEDGER_GROUPS[id]?.label ?? (id === 'ingreso' ? 'Ingreso' : catLabel(id));
+const groupIcon = (id) => LEDGER_GROUPS[id]?.icon ?? (id === 'ingreso' ? '💰' : catIcon(id));
+const KNOWN_GROUPS = new Set([...CATEGORIES.map((c) => c.id), ...Object.keys(LEDGER_GROUPS), 'ingreso']);
+
+function storeEmailMovements(movements) {
+  for (const rec of emailRecords(movements)) upsert('bankMovements', rec);
+}
+
+function importCartola(parsed, ref) {
+  const { statement, movements } = cartolaRecords(parsed);
+  upsert('statements', statement);
+  for (const m of movements) upsert('bankMovements', m);
+  if (ref) upsert('importedRefs', { id: ref });
+}
+
+/** Words of every page of a (possibly password-protected) PDF, for parseCartola. */
+async function pdfWords(data, password) {
+  await loadScript(PDFJS);
+  const lib = window.pdfjsLib;
+  lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+  let doc;
+  try {
+    doc = await lib.getDocument({ data, password, isEvalSupported: false }).promise;
+  } catch (err) {
+    if (err?.name === 'PasswordException') {
+      throw new Error(err.code === 2
+        ? 'La clave de la cartola no es correcta (son los 4 últimos dígitos de tu RUT, sin dígito verificador).'
+        : 'La cartola tiene clave: escríbela y vuelve a intentarlo.');
+    }
+    throw err;
+  }
+  const pages = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const viewport = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    pages.push(content.items.map((it) => ({ text: it.str, x: it.transform[4], y: viewport.height - it.transform[5] })));
+  }
+  return pages;
+}
+
+function setMonthStatus(text) {
+  ui.month.loading = text;
+  const el = document.getElementById('month-status');
+  if (el) el.textContent = text;
+}
+
+function viewMonth() {
+  const months = monthsAvailable(state);
+  const current = todayISO().slice(0, 7);
+  const selected = ui.month.selected && months.includes(ui.month.selected) ? ui.month.selected : (months[0] || current);
+  const r = monthlyReport(state, selected);
+  const config = loadGmailConfig();
+  if (config) preloadGis().catch(() => {});
+  const fromDefault = addDays(`${current}-01`, -62).slice(0, 7);
+  const lastMonths = [...months].slice(0, 6).reverse().map((m) => {
+    const out = monthlyReport(state, m).out;
+    return { label: MONTH_SHORT[Number(m.slice(5)) - 1], value: out, tip: `${periodLabel(m)}: ${money(out)}` };
+  });
+  const groups = r.groups.map((g) => ({ label: `${groupIcon(g.id)} ${groupLabel(g.id)}`, value: g.value }));
+  const days = [...new Set(r.movements.map((m) => m.date))];
+  const statements = live(state.statements).filter((s) => s.to.slice(0, 7) >= selected && s.from.slice(0, 7) <= selected);
+
+  return `
+  <section class="card month-head">
+    <div class="split"><h2>Gastos por mes</h2>
+      ${months.length ? `<select data-change="month-select" aria-label="Mes">${(months.includes(current) ? months : [current, ...months])
+        .map((m) => `<option value="${m}"${m === selected ? ' selected' : ''}>${periodLabel(m)}</option>`).join('')}</select>` : ''}</div>
+    ${months.length ? `
+    <div class="month-totals">
+      <div class="mt out"><span class="small">Salió</span><strong>${money(r.out)}</strong></div>
+      <div class="mt in"><span class="small">Entró</span><strong>${money(r.in)}</strong></div>
+      <div class="mt net"><span class="small">Diferencia</span><strong>${money(r.in - r.out)}</strong></div>
+    </div>
+    <p class="small muted">${r.sources.cartola} movimientos de cartola${statements.length ? ` (${statements.map((s) => `${esc(s.accountType)} ****${esc(s.account)}`).join(', ')})` : ''} y ${r.sources.gmail} de avisos por correo de días que aún no tienen cartola. Los traspasos entre tus propias cuentas no se cuentan.</p>`
+    : '<p class="muted">Todavía no hay movimientos. Usa "Leer correos y cartolas" más abajo o sube una cartola en PDF.</p>'}
+  </section>
+
+  ${lastMonths.length > 1 ? `<section class="card"><h2>Lo que salió cada mes</h2>${barChart(lastMonths, { ariaLabel: 'Gasto total por mes' })}</section>` : ''}
+
+  ${groups.length ? `<section class="card"><h2>¿En qué se fue?</h2>${hbars(groups, money)}</section>` : ''}
+
+  ${r.movements.length ? `<section class="card">
+    <details><summary>Ver los ${r.movements.length} movimientos de ${periodLabel(selected).toLowerCase()}</summary>
+    ${days.map((d) => `<h3 class="section-title">${fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+      <ul class="list">${r.movements.filter((m) => m.date === d).map((m) => `
+        <li><div class="expense-main"><span class="cat-dot cat-${KNOWN_GROUPS.has(m.group) ? m.group : 'otros'}" aria-hidden="true">${groupIcon(m.group)}</span>
+          <div><div>${esc(m.description)}</div><div class="meta">${esc(groupLabel(m.group))} · ${m.source === 'cartola' ? 'Cartola' : 'Aviso por correo'}</div></div></div>
+          <span class="amount${m.direction === 'in' ? ' income' : ''}">${m.direction === 'in' ? '+' : ''}${money(m.amount)}</span></li>`).join('')}</ul>`).join('')}
+    </details></section>` : ''}
+
+  <form class="card" data-form="month-sync" autocomplete="off">
+    <h2>Leer correos y cartolas</h2>
+    <p class="small muted">Lee las cartolas (PDF) que el Banco de Chile te manda cada mes y los avisos de compra, transferencias y pagos. La cartola manda: los avisos solo se usan para los días que todavía no tienen cartola.</p>
+    <div class="row">
+      <div><label for="m-from">Desde</label><input id="m-from" type="month" name="from" value="${fromDefault}" max="${current}" required></div>
+      <div><label for="m-pass">Clave de la cartola</label><input id="m-pass" type="password" name="password" inputmode="numeric" autocomplete="off" maxlength="12"
+        placeholder="${ui.month.password ? 'Ya la escribiste' : '4 últimos dígitos del RUT'}"></div>
+    </div>
+    <p class="small muted">La clave son los 4 últimos dígitos de tu RUT, sin dígito verificador. Se usa solo mientras la app está abierta; no se guarda ni se sincroniza.</p>
+    <div class="actions">
+      ${config ? `<button class="btn-primary" type="submit"${ui.month.loading ? ' disabled' : ''}>Leer desde Gmail</button>`
+        : '<button type="button" class="btn-primary" data-action="tab" data-tab="expenses">Conectar Gmail (en Gastos)</button>'}
+      <label class="btn">Subir cartola PDF<input type="file" accept="application/pdf,.pdf" data-change="cartola-file" hidden></label>
+    </div>
+    <p class="small muted" id="month-status" aria-live="polite">${esc(ui.month.loading)}</p>
   </form>`;
 }
 
@@ -1047,6 +1166,8 @@ const forms = {
         return fetchBankMovements(tok, from, { onProgress: (done, total) => setGmailStatus(`Leyendo correos… ${done} de ${total}`) });
       })
       .then(({ movements, failed, truncated }) => {
+        storeEmailMovements(movements);
+        persist({ silent: true });
         const rows = planImport(movements, state);
         ui.gmail.rows = rows.length ? rows : null;
         const notes = [
@@ -1060,6 +1181,54 @@ const forms = {
       .finally(() => {
         ui.gmail.loading = '';
         render();
+      });
+  },
+  'month-sync'(form) {
+    const config = loadGmailConfig();
+    if (!config || ui.month.loading) return;
+    const password = form.password.value.trim() || ui.month.password;
+    if (password) ui.month.password = password;
+    const from = `${form.from.value || todayISO().slice(0, 7)}-01`;
+    // Ask for the token first, still inside the submit gesture, so the Google popup is not blocked.
+    const tokenPromise = requestGmailToken(config.clientId);
+    setMonthStatus('Esperando el permiso de Google…');
+    const result = { emails: 0, cartolas: 0, notes: [] };
+    tokenPromise
+      .then(async (tok) => {
+        setMonthStatus('Leyendo avisos del banco…');
+        const { movements, failed, truncated } = await fetchBankMovements(tok, from, {
+          onProgress: (done, total) => setMonthStatus(`Leyendo avisos… ${done} de ${total}`),
+        });
+        storeEmailMovements(movements);
+        result.emails = movements.length;
+        if (failed) result.notes.push(`${failed} correo${failed === 1 ? '' : 's'} no se pudo leer.`);
+        if (truncated) result.notes.push('Había demasiados avisos: se leyeron los 500 más recientes.');
+        setMonthStatus('Buscando cartolas…');
+        const skip = new Set(state.importedRefs.map((r) => r.id));
+        const files = await fetchCartolaFiles(tok, from, { skip });
+        if (files.length && !password) {
+          result.notes.push(`Hay ${files.length} cartola${files.length === 1 ? '' : 's'} nueva${files.length === 1 ? '' : 's'}: escribe la clave y vuelve a leer.`);
+          return;
+        }
+        for (const f of files) {
+          setMonthStatus(`Abriendo ${f.filename}…`);
+          const parsed = parseCartola(await pdfWords(f.bytes, password));
+          importCartola(parsed, f.ref);
+          result.cartolas++;
+          result.notes.push(...parsed.warnings);
+        }
+      })
+      .then(() => {
+        ui.month.selected = null;
+        toast(`Listo: ${result.emails} aviso${result.emails === 1 ? '' : 's'} y ${result.cartolas} cartola${result.cartolas === 1 ? '' : 's'} leída${result.cartolas === 1 ? '' : 's'}. ${result.notes.join(' ')}`.trim());
+      })
+      .catch((err) => {
+        if (/clave/i.test(err.message)) ui.month.password = '';
+        toast(err.message);
+      })
+      .finally(() => {
+        ui.month.loading = '';
+        persist();
       });
   },
   'gmail-import'(form) {
@@ -1211,6 +1380,29 @@ const changes = {
     const file = input.files?.[0];
     if (file) readPayslipFile(file);
   },
+  'month-select'(select) {
+    ui.month.selected = select.value;
+    render();
+  },
+  async 'cartola-file'(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const password = document.getElementById('m-pass')?.value.trim() || ui.month.password;
+    if (password) ui.month.password = password;
+    setMonthStatus(`Abriendo ${file.name}…`);
+    try {
+      const parsed = parseCartola(await pdfWords(new Uint8Array(await file.arrayBuffer()), password));
+      importCartola(parsed);
+      ui.month.selected = parsed.to.slice(0, 7);
+      toast(`Cartola ${parsed.accountType} leída: ${parsed.movements.length} movimientos. ${parsed.warnings.join(' ')}`.trim());
+    } catch (err) {
+      if (/clave/i.test(err.message)) ui.month.password = '';
+      toast(err.message);
+    } finally {
+      ui.month.loading = '';
+      persist();
+    }
+  },
   'shop-check'(input) {
     const key = `finanzas.shop.${mondayOf(todayISO())}`;
     const set = new Set(JSON.parse(lsGet(key, '[]')));
@@ -1303,3 +1495,8 @@ document.addEventListener('visibilitychange', () => {
 
 render();
 runSync();
+
+// Installable app (PWA): service workers need https or localhost.
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
+  navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker not registered', err));
+}

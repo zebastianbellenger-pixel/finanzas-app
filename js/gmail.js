@@ -1,7 +1,7 @@
 // Read-only Gmail access from the browser via Google Identity Services (token flow).
 // The access token lives only in memory and expires in about an hour; the OAuth client ID
 // (not a secret) is stored per device. Email contents never leave the browser.
-import { parseBankEmail, messageBody, gmailQuery } from './bankmail.js';
+import { parseBankEmail, messageBody, gmailQuery, base64UrlToBytes } from './bankmail.js';
 
 const CONFIG_KEY = 'finanzas.gmail';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
@@ -88,13 +88,8 @@ const header = (msg, name) => (msg.payload?.headers || []).find((h) => String(h.
 
 class AuthError extends Error {}
 
-/**
- * Lists bank emails since fromISO and returns { movements (newest first), failed, truncated }:
- * failed counts messages that could not be fetched (skipped, not fatal); truncated is true when
- * more than MAX_MESSAGES emails matched. fetchImpl is injectable for tests.
- */
-export async function fetchBankMovements(accessToken, fromISO, { fetchImpl = globalThis.fetch, onProgress = () => {} } = {}) {
-  async function api(path) {
+function gmailApi(accessToken, fetchImpl) {
+  return async (path) => {
     const res = await fetchImpl(`${API}${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (res.status === 401) {
       token = null;
@@ -102,19 +97,30 @@ export async function fetchBankMovements(accessToken, fromISO, { fetchImpl = glo
     }
     if (!res.ok) throw new Error(`Gmail respondió ${res.status}. Vuelve a intentarlo en un rato.`);
     return res.json();
-  }
+  };
+}
 
+async function listIds(api, query) {
   const ids = [];
   let pageToken = '';
   do {
-    const q = new URLSearchParams({ q: gmailQuery(fromISO), maxResults: '100' });
+    const q = new URLSearchParams({ q: query, maxResults: '100' });
     if (pageToken) q.set('pageToken', pageToken);
     const page = await api(`/messages?${q}`);
     ids.push(...(page.messages || []).map((m) => m.id));
     pageToken = page.nextPageToken || '';
   } while (pageToken && ids.length < MAX_MESSAGES);
+  return { ids, truncated: Boolean(pageToken) };
+}
 
-  const truncated = Boolean(pageToken);
+/**
+ * Lists bank emails since fromISO and returns { movements (newest first), failed, truncated }:
+ * failed counts messages that could not be fetched (skipped, not fatal); truncated is true when
+ * more than MAX_MESSAGES emails matched. fetchImpl is injectable for tests.
+ */
+export async function fetchBankMovements(accessToken, fromISO, { fetchImpl = globalThis.fetch, onProgress = () => {} } = {}) {
+  const api = gmailApi(accessToken, fetchImpl);
+  const { ids, truncated } = await listIds(api, gmailQuery(fromISO));
   const movements = [];
   let failed = 0;
   for (let i = 0; i < ids.length; i += CONCURRENCY) {
@@ -139,4 +145,33 @@ export async function fetchBankMovements(accessToken, fromISO, { fetchImpl = glo
     onProgress(Math.min(ids.length, i + CONCURRENCY), ids.length);
   }
   return { movements: movements.sort((a, b) => b.date.localeCompare(a.date)), failed, truncated };
+}
+
+function pdfParts(part, out = []) {
+  if (!part) return out;
+  if (Array.isArray(part.parts)) part.parts.forEach((p) => pdfParts(p, out));
+  if (part.body?.attachmentId && /\.pdf$/i.test(part.filename || '')) out.push(part);
+  return out;
+}
+
+/**
+ * Downloads the PDF of every Banco de Chile "Cartola" email since fromISO that is not in `skip`
+ * (a Set of "gmail:<id>" refs). Returns [{ ref, filename, date, bytes }] (bytes: Uint8Array, still encrypted).
+ */
+export async function fetchCartolaFiles(accessToken, fromISO, { fetchImpl = globalThis.fetch, skip = new Set() } = {}) {
+  const api = gmailApi(accessToken, fetchImpl);
+  const after = gmailQuery(fromISO).split(' ').pop();
+  const { ids } = await listIds(api, `from:bancochile.cl subject:cartola has:attachment ${after}`);
+  const files = [];
+  for (const id of ids.filter((x) => !skip.has(`gmail:${x}`))) {
+    const msg = await api(`/messages/${encodeURIComponent(id)}?format=full`);
+    for (const part of pdfParts(msg.payload)) {
+      const att = await api(`/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(part.body.attachmentId)}`);
+      files.push({
+        ref: `gmail:${id}`, filename: part.filename, date: new Date(Number(msg.internalDate) || 0).toISOString().slice(0, 10),
+        bytes: base64UrlToBytes(att.data),
+      });
+    }
+  }
+  return files;
 }
