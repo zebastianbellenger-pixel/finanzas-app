@@ -1,8 +1,8 @@
 :root {
-  --bg: #f4f4f1;
+  --bg: #f2f4fa;
   --surface: #fcfcfb;
-  --surface-2: #efeeea;
-  --border: #dcdad3;
+  --surface-2: #eef0f6;
+  --border: #dde1ea;
   --text: #1b1b19;
   --text-2: #4d4c47;
   --muted: #6e6d67;
@@ -17,9 +17,9 @@
   --good-bg: #e6f5e6;
   --warning-bg: #fff4dc;
   --critical-bg: #fbe8e8;
-  --grid: #e4e2dc;
-  --radius: 14px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .06);
+  --grid: #e6e9f0;
+  --radius: 18px;
+  --shadow: 0 1px 2px rgba(20, 30, 60, .05), 0 6px 18px rgba(20, 30, 60, .06);
   color-scheme: light;
 }
 
@@ -260,3 +260,108 @@ details ol { padding-left: 20px; }
 .check-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
 .check-row label { margin: 0; color: var(--text); font-size: .95rem; flex: 1; }
 .check-row.done label { text-decoration: line-through; color: var(--muted); }
+
+/* ---------- color layer ---------- */
+
+/* Category identity colors (same hue in buttons, list bubbles and anywhere a category appears). */
+.cat-comida { --c: #e8590c; }
+.cat-supermercado { --c: #2f9e44; }
+.cat-delivery { --c: #d6336c; }
+.cat-transporte { --c: #1c7ed6; }
+.cat-combustible { --c: #e67700; }
+.cat-ocio { --c: #7048e8; }
+.cat-salud { --c: #0c8599; }
+.cat-otros { --c: #707a86; }
+
+/* Per-section accent: titles and the active tab take the color of the section you are in. */
+body { --tab: #1c7ed6; --tab-2: #7048e8; }
+body[data-tab="expenses"] { --tab: #d6336c; --tab-2: #f76707; }
+body[data-tab="accounts"] { --tab: #4263eb; --tab-2: #1098ad; }
+body[data-tab="payslip"] { --tab: #0c8599; --tab-2: #2f9e44; }
+body[data-tab="food"] { --tab: #2f9e44; --tab-2: #e67700; }
+body[data-tab="more"] { --tab: #5f3dc4; --tab-2: #1c7ed6; }
+
+body { background: radial-gradient(1200px 400px at 50% -120px, color-mix(in srgb, var(--tab) 14%, transparent), transparent 70%), var(--bg); background-attachment: fixed; }
+
+.topbar {
+  background: linear-gradient(120deg, #1c7ed6, #7048e8 55%, #d6336c);
+  border-bottom: none; color: #fff; box-shadow: 0 4px 16px rgba(60, 40, 140, .25);
+}
+.topbar h1 { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: -.01em; }
+.logo {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 9px;
+  background: rgba(255, 255, 255, .22); font-weight: 900; font-size: 1rem;
+}
+.sync-pill { background: rgba(255, 255, 255, .18); border-color: rgba(255, 255, 255, .35); color: #fff; }
+.sync-pill.error { background: #fff; color: var(--critical-ink); border-color: #fff; }
+
+.card { border-color: transparent; }
+.card h2 { display: flex; align-items: center; gap: 8px; }
+.card h2::before {
+  content: ""; width: 6px; height: 1.05em; border-radius: 3px; flex-shrink: 0;
+  background: linear-gradient(180deg, var(--tab), var(--tab-2));
+}
+.split h2::before { display: none; }
+
+/* Hero KPI: full color by traffic-light status, white text. */
+.kpi { border-color: transparent; box-shadow: var(--shadow); }
+.kpi.kpi-main { color: #fff; border: none; position: relative; overflow: hidden; }
+.kpi.kpi-main::after {
+  content: ""; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%;
+  background: rgba(255, 255, 255, .12); pointer-events: none;
+}
+.kpi.kpi-main.status-green { background: linear-gradient(135deg, #2b8a3e, #087f5b); }
+.kpi.kpi-main.status-yellow { background: linear-gradient(135deg, #d9480f, #b33b00); }
+.kpi.kpi-main.status-red { background: linear-gradient(135deg, #e03131, #a61e4d); }
+.kpi.kpi-main .kpi-label, .kpi.kpi-main .kpi-sub { color: rgba(255, 255, 255, .9); }
+.kpi.kpi-main .kpi-value { font-size: 2.6rem; }
+.kpi.kpi-main .pill { background: rgba(255, 255, 255, .2); color: #fff; }
+.kpi-save { background: color-mix(in srgb, #7048e8 10%, var(--surface)); }
+.kpi-save .kpi-value { color: #5f3dc4; }
+.kpi-food { background: color-mix(in srgb, #2f9e44 10%, var(--surface)); }
+.kpi-food .kpi-value { color: #2b8a3e; }
+
+/* Buttons */
+.btn-primary {
+  background: linear-gradient(120deg, var(--tab), var(--tab-2)); color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--tab) 35%, transparent);
+}
+button, .btn { transition: transform .08s ease, box-shadow .15s ease, background-color .15s ease; }
+button:active:not(:disabled) { transform: scale(.97); }
+button:disabled { opacity: .6; cursor: default; }
+
+/* Category buttons and list bubbles */
+.cat-btn {
+  background: color-mix(in srgb, var(--c) 12%, var(--surface)); border-color: transparent;
+  color: var(--text); font-weight: 600;
+}
+.cat-btn:hover { background: color-mix(in srgb, var(--c) 20%, var(--surface)); }
+.cat-btn .cat-ico {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px;
+  background: var(--c); font-size: 1.15rem; box-shadow: 0 2px 6px color-mix(in srgb, var(--c) 40%, transparent);
+}
+.expense-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.cat-dot {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 11px; flex-shrink: 0;
+  background: color-mix(in srgb, var(--c) 18%, var(--surface)); font-size: 1.05rem;
+}
+
+/* Bottom tabs: active section gets its own color and a soft pill behind the icon. */
+.tabs { box-shadow: 0 -4px 16px rgba(20, 30, 60, .06); border-top-color: transparent; }
+.tabs button.active { color: var(--tab); }
+.tabs button.active span {
+  background: color-mix(in srgb, var(--tab) 16%, transparent); border-radius: 999px; padding: 0 14px;
+}
+
+.progress > div, .hbar .fill { background: linear-gradient(90deg, var(--tab), var(--tab-2)); }
+.progress.over > div { background: var(--critical); }
+details summary { color: var(--tab); font-weight: 600; }
+.btn-link { color: var(--tab); }
+.btn-link.btn-danger { color: var(--critical-ink); }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .kpi-save .kpi-value { color: #b197fc; }
+  :root:not([data-theme="light"]) .kpi-food .kpi-value { color: #8ce99a; }
+}
+:root[data-theme="dark"] .kpi-save .kpi-value { color: #b197fc; }
+:root[data-theme="dark"] .kpi-food .kpi-value { color: #8ce99a; }

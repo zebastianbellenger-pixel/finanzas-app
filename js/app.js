@@ -180,6 +180,7 @@ function updateSyncPill() {
 function render() {
   const views = { home: viewHome, expenses: viewExpenses, accounts: viewAccounts, payslip: viewPayslip, food: viewFood, more: viewMore };
   if (!views[ui.tab]) ui.tab = 'home';
+  document.body.dataset.tab = ui.tab;
   document.getElementById('view').innerHTML = views[ui.tab]();
   document.querySelectorAll('.tabs button').forEach((b) => {
     const active = b.dataset.tab === ui.tab;
@@ -215,14 +216,14 @@ function viewHome() {
       <span class="pill ${plan.status}"><span aria-hidden="true">${st.icon}</span>${st.label}</span>
       <p class="kpi-sub">${overBy ? `Te pasaste ${money(overBy)}; mañana tu monto diario baja.` : `Gastado hoy ${money(plan.spentToday)} de ${money(plan.dailyAllowance)}`}</p>
     </article>
-    <article class="kpi">
-      <p class="kpi-label">Ahorro del mes</p>
+    <article class="kpi kpi-save">
+      <p class="kpi-label"><span aria-hidden="true">🐷</span> Ahorro del mes</p>
       <p class="kpi-value">${money(plan.savedInCycle)}</p>
       <p class="kpi-sub">Meta fondo de emergencia: ${money(plan.emergency)}</p>
       <p class="kpi-sub">Tarjetas pagadas: ${money(plan.cardPaidInCycle)} de ${money(plan.cardPayments)}</p>
     </article>
-    <article class="kpi">
-      <p class="kpi-label">Presupuesto de comida hoy</p>
+    <article class="kpi kpi-food">
+      <p class="kpi-label"><span aria-hidden="true">🥗</span> Presupuesto de comida hoy</p>
       <p class="kpi-value">${money(Math.max(0, plan.foodToday))}</p>
       <p class="kpi-sub">Semana: ${money(plan.foodWeekBudget)} para comida</p>
     </article>
@@ -236,7 +237,7 @@ function viewHome() {
     <details><summary>Agregar nota (opcional)</summary><input name="note" placeholder="Ej: café, almuerzo, Uber"></details>
     <p class="muted small">Escribe el monto y toca la categoría para guardarlo.</p>
     <div class="cat-grid">
-      ${CATEGORIES.map((c) => `<button type="submit" class="cat-btn" name="category" value="${c.id}"><span aria-hidden="true">${c.icon}</span>${c.label}</button>`).join('')}
+      ${CATEGORIES.map((c) => `<button type="submit" class="cat-btn cat-${c.id}" name="category" value="${c.id}"><span class="cat-ico" aria-hidden="true">${c.icon}</span>${c.label}</button>`).join('')}
     </div>
   </form>
 
@@ -260,8 +261,10 @@ function alertHtml(a) {
 }
 
 function expenseItem(e) {
-  return `<li><div><div>${esc(catIcon(e.category))} ${esc(catLabel(e.category))}${e.note ? ` · <span class="muted">${esc(e.note)}</span>` : ''}</div>
-    <div class="meta">${fmtDate(e.date)}</div></div>
+  const cls = CATEGORIES.some((c) => c.id === e.category) ? e.category : 'otros';
+  return `<li><div class="expense-main"><span class="cat-dot cat-${cls}" aria-hidden="true">${esc(catIcon(e.category))}</span>
+    <div><div>${esc(catLabel(e.category))}${e.note ? ` · <span class="muted">${esc(e.note)}</span>` : ''}</div>
+    <div class="meta">${fmtDate(e.date)}</div></div></div>
     <div class="actions" style="margin:0"><span class="amount">${money(e.amount)}</span>
     <button class="btn-link btn-danger" data-action="del-expense" data-id="${esc(e.id)}" aria-label="Eliminar gasto">✕</button></div></li>`;
 }
