@@ -1043,10 +1043,15 @@ const forms = {
         setGmailStatus('Buscando correos del banco…');
         return fetchBankMovements(tok, from, { onProgress: (done, total) => setGmailStatus(`Leyendo correos… ${done} de ${total}`) });
       })
-      .then((movements) => {
+      .then(({ movements, failed, truncated }) => {
         const rows = planImport(movements, state);
         ui.gmail.rows = rows.length ? rows : null;
-        if (!rows.length) toast(`No hay cobros nuevos desde el ${fmtDate(from)}.`);
+        const notes = [
+          truncated ? 'Había demasiados correos: se leyeron los 500 más recientes; elige una fecha "Desde" más cercana.' : '',
+          failed ? `${failed} correo${failed === 1 ? '' : 's'} no se pudo leer.` : '',
+        ].filter(Boolean).join(' ');
+        if (!rows.length) toast(`No hay cobros nuevos desde el ${fmtDate(from)}. ${notes}`.trim());
+        else if (notes) toast(notes);
       })
       .catch((err) => toast(err.message))
       .finally(() => {

@@ -11,6 +11,9 @@ const ENTITIES = {
   zwj: '', zwnj: '', lrm: '', rlm: '', shy: '',
 };
 
+// Malformed numeric entities (beyond U+10FFFF) are dropped: String.fromCodePoint would throw.
+const codePoint = (n) => (Number.isInteger(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : '');
+
 /** Flattens email HTML to text: table cells become " | ", rows and breaks become new lines. */
 export function htmlToText(html) {
   return String(html ?? '')
@@ -18,8 +21,8 @@ export function htmlToText(html) {
     .replace(/<\/t[dh]>/gi, ' | ')
     .replace(/<br\s*\/?>|<\/(?:tr|p|div|li|h\d|table)>/gi, '\n')
     .replace(/<[^>]*>/g, ' ')
-    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (_, n) => codePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => codePoint(parseInt(n, 16)))
     .replace(/&([a-z]+);/gi, (m, n) => (n in ENTITIES ? ENTITIES[n] : m))
     .replace(/[​-‏⁠﻿]/g, '')
     .replace(/[ \t\r\f\v ]+/g, ' ')

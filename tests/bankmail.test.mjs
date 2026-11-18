@@ -42,6 +42,10 @@ test('htmlToText keeps table cells apart and decodes entities', () => {
   assert.doesNotMatch(t, /<|&/);
 });
 
+test('htmlToText drops out-of-range numeric entities instead of throwing', () => {
+  assert.equal(htmlToText('a&#99999999;b&#x110000;c&#65;'), 'abcA');
+});
+
 test('parses a purchase charged to the account', () => {
   const m = parseBankEmail(email({ subject: 'Cargo en Cuenta', text: htmlToText(PURCHASE_HTML) }));
   assert.deepEqual(m, {

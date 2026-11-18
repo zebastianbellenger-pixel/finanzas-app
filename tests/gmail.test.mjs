@@ -44,10 +44,42 @@ test('fetches all pages, parses bank emails and drops movements before the start
     calls,
   );
   const out = await fetchBankMovements('tok', '2026-10-30', { fetchImpl });
-  assert.deepEqual(out.map((m) => [m.ref, m.amount, m.date]), [['gmail:a', 1000, '2026-11-18'], ['gmail:d', 3000, '2026-11-01']]);
+  assert.deepEqual(out.movements.map((m) => [m.ref, m.amount, m.date]), [['gmail:a', 1000, '2026-11-18'], ['gmail:d', 3000, '2026-11-01']]);
+  assert.equal(out.failed, 0);
+  assert.equal(out.truncated, false);
   assert.ok(calls.every((c) => c.auth === 'Bearer tok'));
   assert.ok(calls[0].url.includes('q=%7Bfrom%3Abancochile.cl+from%3Abancoestado.cl%7D+after%3A2026%2F10%2F29'));
   assert.ok(calls.some((c) => c.url.includes('pageToken=p2')));
+});
+
+test('one message that cannot be fetched does not abort the import', async () => {
+  const calls = [];
+  const ok = fakeGmail(
+    { first: { messages: [{ id: 'a' }, { id: 'gone' }] } },
+    { a: { from: 'enviodigital@bancochile.cl', subject: 'Cargo en Cuenta', text: purchase('1.000', '18/11/2026') } },
+    calls,
+  );
+  const fetchImpl = async (url, init) => (String(url).includes('/messages/gone')
+    ? { ok: false, status: 404, json: async () => ({}) }
+    : ok(url, init));
+  const out = await fetchBankMovements('tok', '2026-10-30', { fetchImpl });
+  assert.deepEqual(out.movements.map((m) => m.ref), ['gmail:a']);
+  assert.equal(out.failed, 1);
+});
+
+test('flags a truncated search when there are more emails than the limit', async () => {
+  let page = 0;
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('/messages')) {
+      page++;
+      return { ok: true, status: 200, json: async () => ({ messages: Array.from({ length: 100 }, (_, i) => ({ id: `x${page}-${i}` })), nextPageToken: `p${page + 1}` }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ id: 'x', internalDate: '0', payload: { mimeType: 'text/plain', headers: [], body: {} } }) };
+  };
+  const out = await fetchBankMovements('tok', '2026-10-30', { fetchImpl });
+  assert.equal(out.truncated, true);
+  assert.equal(page, 5);
 });
 
 test('reports an expired permission and other API errors in Spanish', async () => {

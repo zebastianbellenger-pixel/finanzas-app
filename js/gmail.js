@@ -86,16 +86,19 @@ export function revokeGmailToken() {
 
 const header = (msg, name) => (msg.payload?.headers || []).find((h) => String(h.name).toLowerCase() === name)?.value ?? '';
 
+class AuthError extends Error {}
+
 /**
- * Lists bank emails since fromISO and returns the parsed outgoing movements (newest first).
- * fetchImpl is injectable for tests.
+ * Lists bank emails since fromISO and returns { movements (newest first), failed, truncated }:
+ * failed counts messages that could not be fetched (skipped, not fatal); truncated is true when
+ * more than MAX_MESSAGES emails matched. fetchImpl is injectable for tests.
  */
 export async function fetchBankMovements(accessToken, fromISO, { fetchImpl = globalThis.fetch, onProgress = () => {} } = {}) {
   async function api(path) {
     const res = await fetchImpl(`${API}${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
     if (res.status === 401) {
       token = null;
-      throw new Error('El permiso de Google expiró. Vuelve a intentarlo.');
+      throw new AuthError('El permiso de Google expiró. Vuelve a intentarlo.');
     }
     if (!res.ok) throw new Error(`Gmail respondió ${res.status}. Vuelve a intentarlo en un rato.`);
     return res.json();
@@ -111,11 +114,19 @@ export async function fetchBankMovements(accessToken, fromISO, { fetchImpl = glo
     pageToken = page.nextPageToken || '';
   } while (pageToken && ids.length < MAX_MESSAGES);
 
+  const truncated = Boolean(pageToken);
   const movements = [];
+  let failed = 0;
   for (let i = 0; i < ids.length; i += CONCURRENCY) {
-    const batch = await Promise.all(ids.slice(i, i + CONCURRENCY)
+    const batch = await Promise.allSettled(ids.slice(i, i + CONCURRENCY)
       .map((id) => api(`/messages/${encodeURIComponent(id)}?format=full`)));
-    for (const msg of batch) {
+    for (const result of batch) {
+      if (result.status === 'rejected') {
+        if (result.reason instanceof AuthError) throw result.reason;
+        failed++;
+        continue;
+      }
+      const msg = result.value;
       const m = parseBankEmail({
         id: msg.id,
         from: header(msg, 'from'),
@@ -127,5 +138,5 @@ export async function fetchBankMovements(accessToken, fromISO, { fetchImpl = glo
     }
     onProgress(Math.min(ids.length, i + CONCURRENCY), ids.length);
   }
-  return movements.sort((a, b) => b.date.localeCompare(a.date));
+  return { movements: movements.sort((a, b) => b.date.localeCompare(a.date)), failed, truncated };
 }
