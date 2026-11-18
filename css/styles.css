@@ -223,7 +223,7 @@ details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
 
 .tabs {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 6;
-  display: grid; grid-template-columns: repeat(6, 1fr);
+  display: grid; grid-template-columns: repeat(7, 1fr);
   background: var(--surface); border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -272,10 +272,16 @@ details ol { padding-left: 20px; }
 .cat-ocio { --c: #7048e8; }
 .cat-salud { --c: #0c8599; }
 .cat-otros { --c: #707a86; }
+.cat-deudas { --c: #c92a2a; }
+.cat-cuentas { --c: #1098ad; }
+.cat-transferencias { --c: #4263eb; }
+.cat-comisiones { --c: #495057; }
+.cat-ingreso { --c: #2b8a3e; }
 
 /* Per-section accent: titles and the active tab take the color of the section you are in. */
 body { --tab: #1c7ed6; --tab-2: #7048e8; }
 body[data-tab="expenses"] { --tab: #d6336c; --tab-2: #f76707; }
+body[data-tab="month"] { --tab: #f76707; --tab-2: #d6336c; }
 body[data-tab="accounts"] { --tab: #4263eb; --tab-2: #1098ad; }
 body[data-tab="payslip"] { --tab: #0c8599; --tab-2: #2f9e44; }
 body[data-tab="food"] { --tab: #2f9e44; --tab-2: #e67700; }
@@ -358,6 +364,45 @@ button:disabled { opacity: .6; cursor: default; }
 details summary { color: var(--tab); font-weight: 600; }
 .btn-link { color: var(--tab); }
 .btn-link.btn-danger { color: var(--critical-ink); }
+
+/* Monthly ledger */
+.month-head select { width: auto; min-height: 36px; padding: 4px 10px; font-weight: 600; }
+.month-totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 10px; }
+.mt { border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mt strong { font-size: clamp(.95rem, 4vw, 1.25rem); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mt.out { background: color-mix(in srgb, #e03131 12%, var(--surface)); }
+.mt.in { background: color-mix(in srgb, #2b8a3e 12%, var(--surface)); }
+.mt.net { background: var(--surface-2); }
+.amount.income { color: var(--good-ink); }
+
+/* Desktop: side navigation and two columns of cards. */
+@media (min-width: 1024px) {
+  body { padding-bottom: 0; padding-left: 232px; }
+  .topbar { padding: 14px 28px; }
+  .tabs {
+    top: 0; bottom: 0; right: auto; width: 232px; z-index: 7;
+    display: flex; flex-direction: column; gap: 4px; padding: 76px 12px 16px;
+    border-top: none; box-shadow: 4px 0 18px rgba(20, 30, 60, .06);
+  }
+  .tabs button {
+    flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 46px;
+    padding: 0 14px; border-radius: 12px; font-size: .95rem; color: var(--text-2);
+  }
+  .tabs button:hover { background: var(--surface-2); }
+  .tabs button.active { background: color-mix(in srgb, var(--tab) 12%, transparent); }
+  .tabs button.active span { background: none; padding: 0; }
+  .topbar { position: fixed; left: 0; right: 0; z-index: 8; }
+  main { max-width: 1180px; padding: 92px 28px 32px; }
+  #view { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+  #view > * { margin-bottom: 0; }
+  #view > .kpis, #view > .alert, #view > .month-head { grid-column: 1 / -1; }
+  .kpis { grid-template-columns: 1.4fr 1fr 1fr; }
+  .hbar { grid-template-columns: 170px 1fr auto; }
+  .toast { bottom: 24px; }
+}
+@media (min-width: 1440px) {
+  #view { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .kpi-save .kpi-value { color: #b197fc; }

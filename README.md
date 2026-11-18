@@ -55,6 +55,22 @@ One-time setup (about 10 minutes):
 
 The Client ID is not a secret and is stored only in that browser. **Desconectar Gmail de este equipo** removes it and revokes the token.
 
+## Monthly spending (Mes)
+
+The **Mes** tab shows, per calendar month, what left and entered your bank account, grouped by category, card/debt payments, bills, transfers and fees, with the full movement list and a chart of the last months.
+
+Sources:
+
+- **Cartolas** (Banco de Chile monthly statements, Cuenta Corriente and Cuenta Vista): read from the PDF attached to the "Cartola" emails (button **Leer desde Gmail**) or uploaded by hand (**Subir cartola PDF**). The PDF is password-protected: the password is the last 4 digits of the RUT without the check digit. It is kept in memory while the app is open and never stored or synced. Each parse is checked against the statement's own totals.
+- **Bank notification emails**: used only for days that no imported cartola covers yet (per account), so nothing is counted twice. Re-importing a cartola is harmless (movements have content-based ids).
+
+Transfers between your own accounts (`TRASPASO A CUENTA:` / `TRASPASO DE CUENTA:`) are excluded from the totals. This ledger is a monthly view of the bank account; it does not change the daily budget.
+
+## Desktop and phone
+
+- **Desktop** (≥1024 px): side navigation and cards in two columns (three on very wide screens).
+- **Phone**: the app is installable (manifest, icons, service worker for offline use). Open it from an **https** address and choose "Agregar a pantalla de inicio" / "Instalar app". A phone cannot open `localhost` on your PC, so the app has to be published somewhere (see Hosting). Each device keeps its own data; use GitHub sync to share it, and add the published origin to the Google OAuth client's authorized JavaScript origins to use Gmail import there.
+
 ## Sync between devices (GitHub)
 
 Data lives in the browser (`localStorage`) and can sync to a JSON file in a **private** repository:
@@ -86,6 +102,10 @@ js/store.js       local persistence + merge
 js/sync.js        GitHub contents API sync
 js/bankmail.js    bank email parsing and import planning
 js/gmail.js       Gmail read-only client (Google Identity Services)
+js/cartola.js     Banco de Chile statement (cartola) parser
+js/ledger.js      bank ledger and monthly report
+sw.js             service worker (offline)
+manifest.webmanifest, icons/  installable app
 js/charts.js      inline SVG charts
 js/app.js         UI
 tests/            node:test unit tests
