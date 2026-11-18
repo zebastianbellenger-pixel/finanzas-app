@@ -3,7 +3,7 @@
 export const STORAGE_KEY = 'finanzas.v1';
 export const COLLECTIONS = [
   'payslips', 'fixedExpenses', 'debts', 'debtPayments', 'expenses',
-  'savings', 'weights', 'homeMeals', 'cycleNotes',
+  'savings', 'weights', 'homeMeals', 'cycleNotes', 'importedRefs',
 ];
 
 export function createEmptyState() {
@@ -58,12 +58,14 @@ const SCHEMAS = {
     name: str, type: oneOf(['card', 'loan', 'installments'], 'loan'), payment: num, balance: numOrNull,
     installmentsLeft: numOrNull, rate: numOrNull, dueDay: numOrNull,
   },
-  debtPayments: { debtId: str, date: str, amount: num },
-  expenses: { date: str, amount: num, category: str, note: str, createdAt: num },
+  debtPayments: { debtId: str, date: str, amount: num, ref: str },
+  expenses: { date: str, amount: num, category: str, note: str, createdAt: num, ref: str },
   savings: { date: str, amount: num, kind: str, cycle: str },
   weights: { kg: num },
   homeMeals: { date: str },
   cycleNotes: { openingSpent: num },
+  // Bank emails already reviewed (imported or skipped); id is the email ref, e.g. "gmail:<id>".
+  importedRefs: {},
 };
 
 function coerce(rec, schema, withCommon = true) {

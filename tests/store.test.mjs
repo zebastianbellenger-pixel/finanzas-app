@@ -83,3 +83,15 @@ test('merging a sync result with edits made meanwhile keeps both', () => {
   assert.deepEqual(final.expenses.map((e) => e.id).sort(), ['A', 'B']);
   assert.equal(final.settings.savingsRate, 0.25);
 });
+
+test('normalizeState keeps Gmail import references and the imported-refs collection', () => {
+  const s = normalizeState({
+    expenses: [{ id: 'e1', date: '2026-11-18', amount: 1000, category: 'otros', ref: 'gmail:abc' }],
+    debtPayments: [{ id: 'p1', debtId: 'c1', date: '2026-11-18', amount: 80000, ref: 'gmail:def' }],
+    importedRefs: [{ id: 'gmail:ghi', updatedAt: 5, junk: '<script>' }],
+  });
+  assert.equal(s.expenses[0].ref, 'gmail:abc');
+  assert.equal(s.debtPayments[0].ref, 'gmail:def');
+  assert.deepEqual(s.importedRefs, [{ id: 'gmail:ghi', updatedAt: 5 }]);
+  assert.equal('ref' in normalizeState({ expenses: [{ id: 'e2', amount: 1 }] }).expenses[0], false);
+});

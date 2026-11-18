@@ -30,6 +30,31 @@ The server (`scripts/serve.mjs`) listens on 127.0.0.1 only, so other devices on 
 
 Upload the PDF downloaded from the Buk portal. The text is extracted in the browser with pdf.js (scanned PDFs and photos go through Tesseract OCR). Nothing is uploaded anywhere. Every value can be corrected before saving. The app never logs into Buk, Servipag or any other site, and never stores those passwords.
 
+## Import charges from Gmail
+
+**Gastos → Importar cobros desde Gmail** reads bank notification emails and lists the outgoing movements for review before anything is saved:
+
+| Email (Banco de Chile) | Imported as (default) |
+|---|---|
+| Cargo en Cuenta (purchase) | Expense, category guessed from the merchant |
+| Transferencia a Terceros | Payment of a debt whose name matches the beneficiary (e.g. "CMR"), otherwise an "Otros" expense |
+| Pago de Comercios (Servipag) | Not saved: bills already count as fixed expenses |
+| Pago Crédito Consumo | Not saved unless you pick the debt |
+
+Incoming transfers, transfers between your own accounts, statements and marketing are ignored. An expense you already logged by hand (same amount, ±1 day) defaults to "No registrar". Every reviewed email, saved or not, is remembered and never offered again. BancoEstado is included in the search, but only its incoming-transfer notices have been seen so far; purchase notices need a sample before they can be parsed.
+
+Privacy: the app asks Google for **read-only** Gmail access (`gmail.readonly`). The access token stays in memory for about an hour and is never stored or synced; email contents are parsed in the browser and only amount, date and merchant are saved.
+
+One-time setup (about 10 minutes):
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create a project.
+2. **APIs & Services → Library**: enable **Gmail API**.
+3. **Google Auth Platform** (OAuth consent screen): audience **External**, keep it in **Testing**, and add your Gmail address as a **test user**.
+4. **Clients → Create client**: type **Web application**; under **Authorized JavaScript origins** add the exact origin you open the app from (e.g. `http://localhost:5173`; `localhost` and `127.0.0.1` are different origins).
+5. Paste the **Client ID** into the app. Google will warn that the app is unverified: it is your own app, choose **Continue**.
+
+The Client ID is not a secret and is stored only in that browser. **Desconectar Gmail de este equipo** removes it and revokes the token.
+
 ## Sync between devices (GitHub)
 
 Data lives in the browser (`localStorage`) and can sync to a JSON file in a **private** repository:
@@ -57,6 +82,8 @@ js/budget.js      plan, daily allowance, alerts, debts, shopping list
 js/food.js        meal ideas, catalog with estimated prices, seasonal fruit
 js/store.js       local persistence + merge
 js/sync.js        GitHub contents API sync
+js/bankmail.js    bank email parsing and import planning
+js/gmail.js       Gmail read-only client (Google Identity Services)
 js/charts.js      inline SVG charts
 js/app.js         UI
 tests/            node:test unit tests

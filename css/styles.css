@@ -251,6 +251,12 @@ details summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
 .debt:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
 .inline-form { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
 .inline-form input { max-width: 150px; }
+.inline-form input#g-client { max-width: none; flex: 1; min-width: 0; }
+.import-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+.import-row > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.import-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+.import-side select { font-size: .85rem; min-height: 36px; padding: 4px 8px; max-width: 150px; }
+details ol { padding-left: 20px; }
 .check-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--grid); }
 .check-row label { margin: 0; color: var(--text); font-size: .95rem; flex: 1; }
 .check-row.done label { text-decoration: line-through; color: var(--muted); }

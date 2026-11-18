@@ -13,6 +13,10 @@ import {
   CATALOG, MEALS, HABITS, SEASONAL_FRUIT, withPrices,
 } from './food.js';
 import { loadSyncConfig, saveSyncConfig, syncNow } from './sync.js';
+import {
+  loadGmailConfig, saveGmailConfig, preloadGis, requestGmailToken, revokeGmailToken, fetchBankMovements, CLIENT_ID_PATTERN,
+} from './gmail.js';
+import { planImport } from './bankmail.js';
 import { esc, barChart, lineChart, hbars } from './charts.js';
 
 // ---------- constants & helpers ----------
@@ -73,6 +77,7 @@ const ui = {
   parsing: '',
   syncText: '',
   syncError: false,
+  gmail: { rows: null, loading: '', from: null },
 };
 
 function touch(rec) {
@@ -84,6 +89,18 @@ function upsert(collection, rec) {
   const list = state[collection];
   const i = list.findIndex((x) => x.id === rec.id);
   if (i >= 0) list[i] = rec; else list.push(rec);
+}
+/** Records a payment and lowers the debt's balance or remaining installments. */
+function payDebt(debt, amount, date, ref) {
+  upsert('debtPayments', { id: newId('dp'), debtId: debt.id, date, amount, ...(ref ? { ref } : {}) });
+  const next = { ...debt };
+  if (debt.type === 'installments') {
+    if (debt.installmentsLeft != null) next.installmentsLeft = Math.max(0, debt.installmentsLeft - 1);
+  } else if (debt.balance != null) {
+    next.balance = Math.max(0, debt.balance - amount);
+  }
+  upsert('debts', next);
+  return next;
 }
 function removeRecord(collection, id) {
   const rec = state[collection].find((x) => x.id === id);
@@ -348,6 +365,8 @@ function viewExpenses() {
     <button class="btn-primary" type="submit">Guardar</button>
   </form>
 
+  ${gmailCard(c.start)}
+
   <section class="card">
     <h2>Por categoría en este ciclo</h2>
     ${byCat.length ? hbars(byCat, money) : '<p class="muted">Sin gastos todavía.</p>'}
@@ -365,6 +384,74 @@ function viewExpenses() {
     <div class="inline-form"><input name="amount" inputmode="numeric" value="${esc(note?.openingSpent || '')}" placeholder="$0" aria-label="Gastado antes de usar la app">
     <button class="btn-small" type="submit">Guardar</button></div>
   </form>`;
+}
+
+function gmailCard(cycleStart) {
+  const config = loadGmailConfig();
+  if (!config) {
+    return `
+  <section class="card">
+    <h2>Importar cobros desde Gmail</h2>
+    <p class="small muted">Lee los avisos de compra, transferencias y pagos de Banco de Chile y BancoEstado, y te los muestra para que confirmes antes de guardar. Solo pide permiso de <strong>lectura</strong>; los correos se leen en este navegador y no se envían a ningún otro lado.</p>
+    <details>
+      <summary>Cómo obtener el ID de cliente de Google (una sola vez, ~10 min)</summary>
+      <ol class="small">
+        <li>Entra a <strong>console.cloud.google.com</strong> y crea un proyecto (por ejemplo "Mis Finanzas").</li>
+        <li>En <em>APIs y servicios → Biblioteca</em>, busca <strong>Gmail API</strong> y habilítala.</li>
+        <li>En <em>Google Auth Platform</em> (pantalla de consentimiento): tipo <strong>Externo</strong>, déjala en <strong>Prueba</strong> y agrega tu Gmail como <strong>usuario de prueba</strong>.</li>
+        <li>En <em>Clientes → Crear cliente</em>: tipo <strong>Aplicación web</strong>; en <em>Orígenes autorizados de JavaScript</em> agrega <code>${esc(location.origin)}</code>.</li>
+        <li>Copia el <strong>ID de cliente</strong> y pégalo abajo. Al dar permiso, Google avisará que la app no está verificada: es tu propia app, elige <em>Continuar</em>.</li>
+      </ol>
+    </details>
+    <form data-form="gmail-setup" autocomplete="off">
+      <label for="g-client">ID de cliente de Google</label>
+      <div class="inline-form"><input id="g-client" name="clientId" required placeholder="123…apps.googleusercontent.com">
+      <button class="btn-small btn-primary" type="submit">Guardar</button></div>
+    </form>
+  </section>`;
+  }
+  preloadGis().catch(() => {});
+  const g = ui.gmail;
+  if (g.rows) {
+    const debts = live(state.debts).filter(isDebtActive);
+    const options = (row) => {
+      const current = row.action.type === 'expense' ? `cat:${row.action.category}`
+        : row.action.type === 'debt' ? `debt:${row.action.debtId}` : 'skip';
+      const opt = (value, label) => `<option value="${esc(value)}"${value === current ? ' selected' : ''}>${esc(label)}</option>`;
+      return opt('skip', 'No registrar')
+        + `<optgroup label="Gasto">${CATEGORIES.map((x) => opt(`cat:${x.id}`, x.label)).join('')}</optgroup>`
+        + (debts.length ? `<optgroup label="Pago de deuda">${debts.map((d) => opt(`debt:${d.id}`, d.name)).join('')}</optgroup>` : '');
+    };
+    return `
+  <form class="card" data-form="gmail-import" autocomplete="off">
+    <div class="split"><h2>Cobros encontrados</h2><span class="amount">${g.rows.length}</span></div>
+    <p class="small muted">Revisa cada uno y elige cómo registrarlo. Lo que marques "No registrar" no se volverá a ofrecer.</p>
+    <ul class="list">${g.rows.map((r, i) => `
+      <li class="import-row">
+        <div><strong>${esc(r.description)}</strong>
+          <div class="small muted">${fmtDate(r.date)} · ${esc(r.bank)}${r.reason ? ` · ${esc(r.reason)}` : ''}</div></div>
+        <div class="import-side"><span class="amount">${money(r.amount)}</span>
+          <select name="a${i}" aria-label="Registrar ${esc(r.description)} como">${options(r)}</select></div>
+      </li>`).join('')}</ul>
+    <div class="actions"><button class="btn-primary" type="submit">Guardar</button>
+    <button type="button" data-action="gmail-cancel">Cancelar</button></div>
+  </form>`;
+  }
+  return `
+  <form class="card" data-form="gmail-fetch" autocomplete="off">
+    <h2>Importar cobros desde Gmail</h2>
+    <div class="inline-form"><label for="g-from" class="small">Desde</label>
+      <input id="g-from" type="date" name="from" value="${esc(g.from || cycleStart)}" max="${todayISO()}" required>
+      <button class="btn-small btn-primary" type="submit"${g.loading ? ' disabled' : ''}>Buscar cobros</button></div>
+    <p class="small muted" id="gmail-status" aria-live="polite">${esc(g.loading || 'Banco de Chile y BancoEstado. Te pedirá permiso de lectura de Gmail (dura 1 hora).')}</p>
+    <button type="button" class="btn-link small" data-action="gmail-forget">Desconectar Gmail de este equipo</button>
+  </form>`;
+}
+
+function setGmailStatus(text) {
+  ui.gmail.loading = text;
+  const el = document.getElementById('gmail-status');
+  if (el) el.textContent = text;
 }
 
 function viewAccounts() {
@@ -814,6 +901,17 @@ async function readPayslipFile(file) {
 // ---------- actions ----------
 
 const actions = {
+  'gmail-cancel'() {
+    ui.gmail.rows = null;
+    render();
+  },
+  'gmail-forget'() {
+    revokeGmailToken();
+    saveGmailConfig(null);
+    ui.gmail = { rows: null, loading: '', from: null };
+    render();
+    toast('Gmail desconectado de este equipo');
+  },
   tab(el) {
     ui.tab = el.dataset.tab;
     lsSet('finanzas.tab', ui.tab);
@@ -922,6 +1020,59 @@ const forms = {
     persist();
     toast('Gasto guardado');
   },
+  'gmail-setup'(form) {
+    const clientId = form.clientId.value.trim();
+    if (!CLIENT_ID_PATTERN.test(clientId)) {
+      toast('Ese no parece un ID de cliente de Google (termina en .apps.googleusercontent.com).');
+      return;
+    }
+    saveGmailConfig({ clientId });
+    render();
+    toast('Listo. Ahora puedes buscar tus cobros.');
+  },
+  'gmail-fetch'(form) {
+    const config = loadGmailConfig();
+    if (!config || ui.gmail.loading) return;
+    const from = form.from.value || computePlan(state, todayISO()).cycle.start;
+    ui.gmail.from = from;
+    // Ask for the token first, still inside the submit gesture, so the Google popup is not blocked.
+    const tokenPromise = requestGmailToken(config.clientId);
+    setGmailStatus('Esperando el permiso de Google…');
+    tokenPromise
+      .then((tok) => {
+        setGmailStatus('Buscando correos del banco…');
+        return fetchBankMovements(tok, from, { onProgress: (done, total) => setGmailStatus(`Leyendo correos… ${done} de ${total}`) });
+      })
+      .then((movements) => {
+        const rows = planImport(movements, state);
+        ui.gmail.rows = rows.length ? rows : null;
+        if (!rows.length) toast(`No hay cobros nuevos desde el ${fmtDate(from)}.`);
+      })
+      .catch((err) => toast(err.message))
+      .finally(() => {
+        ui.gmail.loading = '';
+        render();
+      });
+  },
+  'gmail-import'(form) {
+    const rows = ui.gmail.rows || [];
+    let saved = 0;
+    rows.forEach((r, i) => {
+      const choice = form.elements[`a${i}`]?.value || 'skip';
+      const [type, id] = [choice.slice(0, choice.indexOf(':')), choice.slice(choice.indexOf(':') + 1)];
+      if (type === 'cat' && CATEGORIES.some((x) => x.id === id)) {
+        upsert('expenses', { id: newId('e'), date: r.date, amount: r.amount, category: id, note: r.description, createdAt: Date.now(), ref: r.ref });
+        saved++;
+      } else if (type === 'debt') {
+        const debt = live(state.debts).find((d) => d.id === id);
+        if (debt) { payDebt(debt, r.amount, r.date, r.ref); saved++; }
+      }
+      upsert('importedRefs', { id: r.ref });
+    });
+    ui.gmail.rows = null;
+    persist();
+    toast(saved ? `${saved} movimiento${saved === 1 ? '' : 's'} guardado${saved === 1 ? '' : 's'}` : 'Listo: no se guardó ningún movimiento.');
+  },
   opening(form) {
     const plan = computePlan(state, todayISO());
     upsert('cycleNotes', { id: plan.cycle.start, openingSpent: digits(form.amount.value) });
@@ -972,14 +1123,7 @@ const forms = {
     const d = state.debts.find((x) => x.id === form.dataset.id);
     const amount = digits(form.amount.value);
     if (!d || !amount) return;
-    upsert('debtPayments', { id: newId('dp'), debtId: d.id, date: todayISO(), amount });
-    const next = { ...d };
-    if (d.type === 'installments') {
-      if (d.installmentsLeft != null) next.installmentsLeft = Math.max(0, d.installmentsLeft - 1);
-    } else if (d.balance != null) {
-      next.balance = Math.max(0, d.balance - amount);
-    }
-    upsert('debts', next);
+    const next = payDebt(d, amount, todayISO());
     persist();
     toast(isDebtActive(next) ? 'Pago registrado' : `¡${d.name} pagada por completo! 🎉`);
   },
