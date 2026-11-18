@@ -82,6 +82,14 @@ test('warns when the charges do not add up to the statement totals', () => {
   assert.match(c.warnings[0], /cargos/i);
 });
 
+test('a short document number is not read as a charge', () => {
+  y = 286;
+  const page = [...header('CORRIENTE', '1234', '30/11/2026', '30/12/2026', 1, 1),
+    { text: '03/12', x: 28, y: 300 }, { text: 'DEPOSITO EN EFECTIVO', x: 60, y: 300 }, { text: 'CENTRAL', x: 227, y: 300 },
+    { text: '123', x: 300, y: 300 }, { text: '50.000', x: 466, y: 300 }];
+  assert.deepEqual(parseCartola([page]).movements.map((m) => [m.amount, m.direction]), [[50000, 'in']]);
+});
+
 test('rejects files that are not a cartola', () => {
   assert.throws(() => parseCartola([[{ text: 'Liquidación de Sueldo', x: 10, y: 10 }]]), /cartola/i);
 });

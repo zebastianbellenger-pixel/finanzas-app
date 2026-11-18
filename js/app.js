@@ -1399,6 +1399,7 @@ const changes = {
       if (/clave/i.test(err.message)) ui.month.password = '';
       toast(err.message);
     } finally {
+      input.value = '';
       ui.month.loading = '';
       persist();
     }

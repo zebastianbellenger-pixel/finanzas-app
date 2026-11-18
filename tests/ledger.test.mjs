@@ -17,6 +17,8 @@ test('classifies cartola and email movements into report groups', () => {
   assert.equal(c('TRASPASO A CUENTA:000099990000'), 'interno');
   assert.equal(c('TRASPASO DE CUENTA:000099990000', 'in'), 'interno');
   assert.equal(c('TRASPASO DE:EMPRESA EJEMPLO', 'in'), 'ingreso');
+  assert.equal(c('PAGO:TIENDA INTERESANTE'), 'otros');
+  assert.equal(c('TRASPASO A:TENPOSTORE SPA'), 'transferencias');
   const e = (kind, over = {}) => classifyMovement({ kind, direction: 'out', source: 'gmail', description: 'X', ...over }, debts);
   assert.equal(e('bill'), 'cuentas');
   assert.equal(e('loan'), 'deudas');

@@ -54,9 +54,10 @@ export function parseCartola(pages) {
       if (hasta && !to) to = dmy(hasta);
 
       if (/MONTO DEPOSITOS/.test(line) && /SALDO/.test(line)) {
+        const charges = row.words.find((w) => /MONTO (CHEQUES|CARGOS)/i.test(textOf(w)));
         const dep = row.words.find((w) => /MONTO DEPOSITOS/i.test(textOf(w)));
         const bal = row.words.find((w) => /^SALDO$/i.test(textOf(w)));
-        columns = { deposits: dep.x - 15, balance: bal.x - 15 };
+        if (dep && bal) columns = { charges: charges ? charges.x - 15 : 290, deposits: dep.x - 15, balance: bal.x - 15 };
         continue;
       }
       if (/OTROS CARGOS/.test(line) && /IMPUESTOS/.test(line) && rows[i + 1]) {
@@ -74,7 +75,8 @@ export function parseCartola(pages) {
       const detail = row.words.filter((w) => w.x > 50 && w.x < 220).map(textOf).join(' ');
       if (/^SALDO (INICIAL|FINAL)/i.test(detail)) continue;
       const branch = row.words.filter((w) => w.x >= 220 && w.x < 290 && !AMOUNT.test(textOf(w))).map(textOf).join(' ');
-      const amounts = row.words.filter((w) => w.x >= 290 && AMOUNT.test(textOf(w)));
+      // Amounts start at the charges column, which keeps short "N° DOCTO" numbers out.
+      const amounts = row.words.filter((w) => w.x >= columns.charges && AMOUNT.test(textOf(w)));
       const charge = amounts.find((w) => w.x < columns.deposits);
       const credit = amounts.find((w) => w.x >= columns.deposits && w.x < columns.balance);
       const money = charge || credit;
