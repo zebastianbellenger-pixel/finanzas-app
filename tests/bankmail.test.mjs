@@ -179,6 +179,13 @@ test('a manual expense is matched to the email of the same day first', () => {
   assert.equal(by['gmail:18'].action.type, 'expense');
 });
 
+test('records the source account of transfers, bills and loan payments', () => {
+  const transfer = `| Origen |\n| Nº de Cuenta | 00-111-22233-44 |\n| Destino |\n| Nombre y Apellido | Persona Ejemplo |\n| Nº de Cuenta | 01-999-88877-66 |\n| Monto | $5.000 |\n| Fecha y Hora: viernes 13 de noviembre de 2026 21:01 |`;
+  assert.equal(parseBankEmail(email({ subject: 'Transferencia a Terceros', text: transfer })).account, '3344');
+  assert.equal(parseBankEmail(email({ subject: 'Pago de Comercios', text: `| Cuenta de cargo | 00-111-22233-44 |\n${BILL_TEXT}` })).account, '3344');
+  assert.equal(parseBankEmail(email({ subject: 'Comprobante Pago Credito Consumo', text: `| N° de Cuenta | 00-111-22233-44 |\n${LOAN_TEXT}` })).account, '3344');
+});
+
 test('emails skipped in a previous import are not offered again', () => {
   const s = createEmptyState();
   s.importedRefs.push({ id: 'gmail:skipped' });

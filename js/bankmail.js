@@ -101,6 +101,11 @@ export function parseBankEmail(email) {
   }
 
   if (!out || !(out.amount > 0)) return null;
+  if (!out.account) {
+    // First account number in the email is the source account ("Origen" comes before "Destino").
+    const acc = /(?:N[º°o]\.? de Cuenta|Cuenta de cargo)\s*\|\s*([\d-]{6,})/i.exec(text)?.[1];
+    if (acc) out.account = acc.replace(/\D/g, '').slice(-4);
+  }
   if (!out.date) out.date = String(email.date ?? '').slice(0, 10) || null;
   return out.date ? out : null;
 }
@@ -127,7 +132,7 @@ const GENERIC_WORDS = new Set(['TARJETA', 'BANCO', 'CREDITO', 'CUENTA', 'CHILE',
   'SPA', 'LTDA', 'LIMITADA', 'EIRL']);
 const words = (s) => normalize(s).split(/[^A-Z0-9]+/).filter((w) => w.length >= 3 && !GENERIC_WORDS.has(w));
 
-function matchDebt(debts, name) {
+export function matchDebt(debts, name) {
   const target = new Set(words(name));
   if (!target.size) return null;
   return debts.find((d) => words(d.name).some((w) => target.has(w))) ?? null;

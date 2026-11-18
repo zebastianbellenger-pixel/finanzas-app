@@ -3,7 +3,7 @@
 export const STORAGE_KEY = 'finanzas.v1';
 export const COLLECTIONS = [
   'payslips', 'fixedExpenses', 'debts', 'debtPayments', 'expenses',
-  'savings', 'weights', 'homeMeals', 'cycleNotes', 'importedRefs',
+  'savings', 'weights', 'homeMeals', 'cycleNotes', 'importedRefs', 'statements', 'bankMovements',
 ];
 
 export function createEmptyState() {
@@ -66,6 +66,12 @@ const SCHEMAS = {
   cycleNotes: { openingSpent: num },
   // Bank emails already reviewed (imported or skipped); id is the email ref, e.g. "gmail:<id>".
   importedRefs: {},
+  // Bank ledger for the monthly report: imported cartolas and every movement read from cartolas or emails.
+  statements: { account: str, accountType: str, from: str, to: str },
+  bankMovements: {
+    date: str, amount: num, direction: oneOf(['out', 'in'], 'out'), description: str, account: str,
+    source: oneOf(['cartola', 'gmail'], 'gmail'), kind: str,
+  },
 };
 
 function coerce(rec, schema, withCommon = true) {
